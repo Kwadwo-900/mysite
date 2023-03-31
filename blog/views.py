@@ -6,13 +6,17 @@ from django.views.generic import ListView
 from .forms import EmailPostForm,CommentForm
 from django.core.mail import send_mail
 from django.views.decorators.http import require_POST
-
+from taggit.models import Tag
+from django.db.models import Count
 # Create your views here.
-'''def post_list(request):
-    posts_list = Post.published.all()
-
+def post_list(request, tag_slug = None):
+    post_list = Post.published.all()
+    tag = None
+    if tag_slug:
+        tag = get_object_or_404(Tag, slug = tag_slug)
+        post_list = post_list.filter(tag__in = [tag])
     #making a pagination that returns 3 posts per page
-    paginator = Paginator(posts_list, 3)
+    paginator = Paginator(post_list, 3)
     page_number = request.GET.get('page',1)
 
     #handling errors in the case of out of range numbers and alphabets
@@ -22,17 +26,17 @@ from django.views.decorators.http import require_POST
         posts = paginator.page(1)
     except EmptyPage:
         posts = paginator.page(paginator.num_pages)
-    return render(request, 'blog/post/list.html',{'posts': posts})'''
+    return render(request, 'blog/post/list.html',{'posts': posts,'tag':tag})
 
 #creating a class based view as opposed to the function based view 
-class PostListView(ListView):
+'''class PostListView(ListView):
     """
     An alternative lsit view
     """
     queryset = Post.published.all()
     context_object_name = 'posts'
     paginate_by = 3
-    template_name = 'blog/post/list.html'
+    template_name = 'blog/post/list.html'''
 
 
 def post_detail(request, year,month,day,post):
@@ -50,7 +54,12 @@ def post_detail(request, year,month,day,post):
     #form to allow users to add comments 
     form = CommentForm()
     
-    return render(request, 'blog/post/detail.html', {'post':post,'comments':comments,'form':form})
+    #list of similar posts
+    post_tags_ids = post.tag.values_list('id', flat = True)
+    similar_posts = Post.published.filter(tag__in = post_tags_ids).exclude(id = post.id)
+    similar_posts = similar_posts.annotate(same_tags=Count('tag')).order_by('-same_tags','-publish')[:4]
+
+    return render(request, 'blog/post/detail.html', {'post':post,'comments':comments,'form':form,'similar_posts':similar_posts})
 
 def post_share(request, post_id):
      post = get_object_or_404(Post, id = post_id, status = Post.Status.PUBLISHED)
